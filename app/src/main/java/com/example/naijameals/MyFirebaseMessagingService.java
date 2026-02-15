@@ -5,6 +5,7 @@ import android.app.NotificationManager;
 import android.app.PendingIntent;
 import android.content.Context;
 import android.content.Intent;
+import android.content.SharedPreferences;
 import android.media.RingtoneManager;
 import android.net.Uri;
 import android.os.Build;
@@ -14,6 +15,9 @@ import android.util.Log;
 import androidx.core.app.NotificationCompat;
 import com.google.firebase.messaging.FirebaseMessagingService;
 import com.google.firebase.messaging.RemoteMessage;
+import org.json.JSONArray;
+import org.json.JSONException;
+import org.json.JSONObject;
 
 public class MyFirebaseMessagingService extends FirebaseMessagingService {
 
@@ -21,6 +25,8 @@ public class MyFirebaseMessagingService extends FirebaseMessagingService {
     private static final String CHANNEL_ID = "naija_meals_notifications";
     private static final String CHANNEL_NAME = "Naija Meals Notifications";
     private static final String CHANNEL_DESCRIPTION = "Notifications for Naija Meals app";
+    private static final String PREF_NAME = "pending_notifications";
+    private static final String PREF_KEY_NOTIFICATIONS = "notifications_list";
 
     @Override
     public void onCreate() {
@@ -67,13 +73,46 @@ public class MyFirebaseMessagingService extends FirebaseMessagingService {
             }
         }
 
-        // Show notification
+        // Store notification to show as alert when app opens
         if (!body.isEmpty()) {
+            storeNotificationForAlert(title, body);
+            
+            // Also show system notification
             sendNotification(title, body, remoteMessage.getData());
         }
         
         // Vibrate device
         vibrateDevice();
+        
+        // Send broadcast to MainActivity if app is running
+        Intent broadcastIntent = new Intent("com.example.naijameals.NOTIFICATION_RECEIVED");
+        broadcastIntent.putExtra("title", title);
+        broadcastIntent.putExtra("body", body);
+        sendBroadcast(broadcastIntent);
+    }
+    
+    // Store notification to show as alert dialog when app opens
+    private void storeNotificationForAlert(String title, String body) {
+        try {
+            SharedPreferences prefs = getSharedPreferences(PREF_NAME, Context.MODE_PRIVATE);
+            String notificationsJson = prefs.getString(PREF_KEY_NOTIFICATIONS, "[]");
+            
+            JSONArray notificationsArray = new JSONArray(notificationsJson);
+            JSONObject notification = new JSONObject();
+            notification.put("title", title);
+            notification.put("body", body);
+            notification.put("timestamp", System.currentTimeMillis());
+            
+            notificationsArray.put(notification);
+            
+            SharedPreferences.Editor editor = prefs.edit();
+            editor.putString(PREF_KEY_NOTIFICATIONS, notificationsArray.toString());
+            editor.apply();
+            
+            Log.d(TAG, "Stored notification for alert: " + title);
+        } catch (JSONException e) {
+            Log.e(TAG, "Error storing notification: " + e.getMessage());
+        }
     }
 
     private void createNotificationChannel() {

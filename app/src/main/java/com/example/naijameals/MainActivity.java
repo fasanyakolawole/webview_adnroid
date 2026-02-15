@@ -1,12 +1,17 @@
 package com.example.naijameals;
 
 import android.annotation.SuppressLint;
+import android.content.BroadcastReceiver;
 import android.content.Context;
 import android.content.Intent;
+import android.content.IntentFilter;
+import android.content.SharedPreferences;
 import android.content.pm.PackageManager;
 import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
+import android.os.Handler;
+import android.os.Looper;
 import android.os.VibrationEffect;
 import android.os.Vibrator;
 import android.os.VibratorManager;
@@ -30,6 +35,9 @@ import androidx.core.content.ContextCompat;
 import com.google.android.gms.tasks.OnCompleteListener;
 import com.google.android.gms.tasks.Task;
 import com.google.firebase.messaging.FirebaseMessaging;
+import org.json.JSONArray;
+import org.json.JSONException;
+import org.json.JSONObject;
 
 public class MainActivity extends AppCompatActivity {
 
@@ -38,6 +46,9 @@ public class MainActivity extends AppCompatActivity {
     private static final int NOTIFICATION_PERMISSION_REQUEST_CODE = 101;
     private ValueCallback<Uri[]> fileUploadCallback;
     private ActivityResultLauncher<Intent> filePickerLauncher;
+    private static final String PREF_NAME = "pending_notifications";
+    private static final String PREF_KEY_NOTIFICATIONS = "notifications_list";
+    private BroadcastReceiver notificationReceiver;
 
     // JavaScript Interface class
     public class WebAppInterface {
@@ -405,6 +416,176 @@ public class MainActivity extends AppCompatActivity {
         // Note: On Android emulator, use "http://10.0.2.2:8081" instead of "localhost"
         // On physical device, use your computer's IP address (e.g., "http://192.168.1.100:8081")
 //        webView.loadUrl("http://10.0.2.2:8081");
+        
+        // Check for pending notifications and show as alerts
+        // Delay this slightly to ensure activity is fully initialized
+        new Handler(Looper.getMainLooper()).postDelayed(() -> {
+            try {
+                if (!isFinishing() && !isDestroyedCompat()) {
+                    checkAndShowPendingNotifications();
+                    // Register broadcast receiver for notifications received while app is running
+                    registerNotificationReceiver();
+                }
+            } catch (Exception e) {
+                Log.e("MainActivity", "Error initializing notifications: " + e.getMessage());
+            }
+        }, 100);
+    }
+    
+    // Helper method to check if activity is destroyed (compatible with all Android versions)
+    private boolean isDestroyedCompat() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.JELLY_BEAN_MR1) {
+            return isDestroyed();
+        }
+        return false;
+    }
+    
+    // Register broadcast receiver to show notifications immediately when app is running
+    private void registerNotificationReceiver() {
+        try {
+            notificationReceiver = new BroadcastReceiver() {
+                @Override
+                public void onReceive(Context context, Intent intent) {
+                    try {
+                        if ("com.example.naijameals.NOTIFICATION_RECEIVED".equals(intent.getAction())) {
+                            String title = intent.getStringExtra("title");
+                            String body = intent.getStringExtra("body");
+                            if (title != null && body != null) {
+                                showNotificationAlert(title, body);
+                            }
+                        }
+                    } catch (Exception e) {
+                        Log.e("MainActivity", "Error in notification receiver: " + e.getMessage());
+                    }
+                }
+            };
+            
+            IntentFilter filter = new IntentFilter("com.example.naijameals.NOTIFICATION_RECEIVED");
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                registerReceiver(notificationReceiver, filter, Context.RECEIVER_EXPORTED);
+            } else {
+                registerReceiver(notificationReceiver, filter);
+            }
+        } catch (Exception e) {
+            Log.e("MainActivity", "Error registering notification receiver: " + e.getMessage());
+            // Continue without receiver - notifications will still show on app open
+        }
+    }
+    
+    // Check for stored notifications and show them as alert dialogs
+    private void checkAndShowPendingNotifications() {
+        // Delay slightly to ensure WebView is ready
+        new Handler(Looper.getMainLooper()).postDelayed(() -> {
+            try {
+                SharedPreferences prefs = getSharedPreferences(PREF_NAME, Context.MODE_PRIVATE);
+                String notificationsJson = prefs.getString(PREF_KEY_NOTIFICATIONS, "[]");
+                
+                if (notificationsJson == null || notificationsJson.trim().isEmpty()) {
+                    notificationsJson = "[]";
+                }
+                
+                JSONArray notificationsArray = new JSONArray(notificationsJson);
+                
+                if (notificationsArray.length() > 0) {
+                    // Show notifications one by one
+                    showNotificationsSequentially(notificationsArray, 0);
+                    
+                    // Clear stored notifications
+                    SharedPreferences.Editor editor = prefs.edit();
+                    editor.putString(PREF_KEY_NOTIFICATIONS, "[]");
+                    editor.apply();
+                }
+            } catch (JSONException e) {
+                Log.e("MainActivity", "Error reading notifications: " + e.getMessage());
+                // Clear invalid data
+                try {
+                    SharedPreferences prefs = getSharedPreferences(PREF_NAME, Context.MODE_PRIVATE);
+                    SharedPreferences.Editor editor = prefs.edit();
+                    editor.putString(PREF_KEY_NOTIFICATIONS, "[]");
+                    editor.apply();
+                } catch (Exception ex) {
+                    Log.e("MainActivity", "Error clearing invalid notifications: " + ex.getMessage());
+                }
+            } catch (Exception e) {
+                Log.e("MainActivity", "Unexpected error checking notifications: " + e.getMessage());
+            }
+        }, 500); // Small delay to ensure UI is ready
+    }
+    
+    // Show notifications one by one as alert dialogs
+    private void showNotificationsSequentially(JSONArray notificationsArray, int index) {
+        if (index >= notificationsArray.length()) {
+            return; // All notifications shown
+        }
+        
+        try {
+            JSONObject notification = notificationsArray.getJSONObject(index);
+            String title = notification.getString("title");
+            String body = notification.getString("body");
+            
+            showNotificationAlert(title, body, () -> {
+                // After user closes this notification, show the next one
+                showNotificationsSequentially(notificationsArray, index + 1);
+            });
+        } catch (JSONException e) {
+            Log.e("MainActivity", "Error showing notification: " + e.getMessage());
+            // Try next notification
+            if (index + 1 < notificationsArray.length()) {
+                showNotificationsSequentially(notificationsArray, index + 1);
+            }
+        }
+    }
+    
+    // Show a notification as an alert dialog (must be dismissed)
+    private void showNotificationAlert(String title, String body) {
+        showNotificationAlert(title, body, null);
+    }
+    
+    // Show a notification as an alert dialog with optional callback
+    private void showNotificationAlert(String title, String body, Runnable onDismiss) {
+        try {
+            if (isFinishing() || isDestroyedCompat()) {
+                return; // Don't show dialog if activity is finishing or destroyed
+            }
+            
+            runOnUiThread(() -> {
+                try {
+                    if (isFinishing() || isDestroyedCompat()) {
+                        return; // Double check in case state changed
+                    }
+                    
+                    new AlertDialog.Builder(this)
+                            .setTitle(title != null ? title : "Notification")
+                            .setMessage(body != null ? body : "")
+                            .setCancelable(false) // User must close it
+                            .setPositiveButton("OK", (dialog, which) -> {
+                                dialog.dismiss();
+                                if (onDismiss != null) {
+                                    onDismiss.run();
+                                }
+                            })
+                            .setIcon(android.R.drawable.ic_dialog_info)
+                            .show();
+                } catch (Exception e) {
+                    Log.e("MainActivity", "Error showing notification alert: " + e.getMessage());
+                }
+            });
+        } catch (Exception e) {
+            Log.e("MainActivity", "Error in showNotificationAlert: " + e.getMessage());
+        }
+    }
+    
+    @Override
+    protected void onDestroy() {
+        super.onDestroy();
+        // Unregister broadcast receiver
+        if (notificationReceiver != null) {
+            try {
+                unregisterReceiver(notificationReceiver);
+            } catch (Exception e) {
+                Log.e("MainActivity", "Error unregistering receiver: " + e.getMessage());
+            }
+        }
     }
     
     @Override
