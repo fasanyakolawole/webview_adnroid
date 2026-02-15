@@ -10,6 +10,7 @@ import android.os.Bundle;
 import android.os.VibrationEffect;
 import android.os.Vibrator;
 import android.os.VibratorManager;
+import android.util.Log;
 import android.view.animation.AlphaAnimation;
 import android.webkit.JavascriptInterface;
 import android.webkit.ValueCallback;
@@ -34,6 +35,7 @@ public class MainActivity extends AppCompatActivity {
 
     private WebView webView;
     private static final int CALL_PHONE_PERMISSION_REQUEST_CODE = 100;
+    private static final int NOTIFICATION_PERMISSION_REQUEST_CODE = 101;
     private ValueCallback<Uri[]> fileUploadCallback;
     private ActivityResultLauncher<Intent> filePickerLauncher;
 
@@ -239,6 +241,18 @@ public class MainActivity extends AppCompatActivity {
         }
     }
     
+    // Request notification permission for Android 13+
+    private void requestNotificationPermission() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            if (ContextCompat.checkSelfPermission(this, android.Manifest.permission.POST_NOTIFICATIONS)
+                    != PackageManager.PERMISSION_GRANTED) {
+                ActivityCompat.requestPermissions(this,
+                        new String[]{android.Manifest.permission.POST_NOTIFICATIONS},
+                        NOTIFICATION_PERMISSION_REQUEST_CODE);
+            }
+        }
+    }
+    
     // Handle permission request result
     @Override
     public void onRequestPermissionsResult(int requestCode, String[] permissions, int[] grantResults) {
@@ -255,6 +269,14 @@ public class MainActivity extends AppCompatActivity {
                 Toast.makeText(this, "Phone call permission is required to make calls", Toast.LENGTH_LONG).show();
                 pendingPhoneNumber = null;
             }
+        } else if (requestCode == NOTIFICATION_PERMISSION_REQUEST_CODE) {
+            if (grantResults.length > 0 && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
+                // Notification permission granted
+                Log.d("MainActivity", "Notification permission granted");
+            } else {
+                // Notification permission denied
+                Toast.makeText(this, "Notification permission is required to receive notifications", Toast.LENGTH_LONG).show();
+            }
         }
     }
 
@@ -267,6 +289,9 @@ public class MainActivity extends AppCompatActivity {
         if (getSupportActionBar() != null) {
             getSupportActionBar().hide();
         }
+        
+        // Request notification permission for Android 13+
+        requestNotificationPermission();
         
         // Initialize file picker launcher
         filePickerLauncher = registerForActivityResult(

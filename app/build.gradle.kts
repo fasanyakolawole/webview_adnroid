@@ -1,7 +1,6 @@
 plugins {
     alias(libs.plugins.android.application)
-    // Temporarily disabled - uncomment after fixing google-services.json
-    // id("com.google.gms.google-services")
+    id("com.google.gms.google-services")
 }
 
 android {
@@ -9,7 +8,7 @@ android {
     compileSdk = 34
 
     defaultConfig {
-        applicationId = "com.mfas.naijameals"
+        applicationId = "com.example.joiner"
         minSdk = 24
         targetSdk = 34
         versionCode = 1
