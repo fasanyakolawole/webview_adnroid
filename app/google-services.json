@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "769322465667",
+    "project_id": "ojami-97255",
+    "storage_bucket": "ojami-97255.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:769322465667:android:37cc336a5d7898776cdeb6",
+        "android_client_info": {
+          "package_name": "com.example.joiner"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyDF5yq2oTO8aYkePwKteq2AxFNLkPlmpnw"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
