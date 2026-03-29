@@ -270,45 +270,66 @@ public class MainActivity extends AppCompatActivity {
             });
         }
 
+        /**
+         * Fetches the current FCM registration token (refreshed by Firebase as needed) and invokes JS callbacks.
+         * From the WebView: {@code Android.getFcmToken();}
+         * Then handle either {@code window.onFcmTokenReceived(token)} / {@code window.onFcmTokenError(msg)}
+         * or the legacy names {@code window.onFirebaseTokenReceived} / {@code window.onFirebaseTokenError}.
+         */
+        @JavascriptInterface
+        public void getFcmToken() {
+            fetchFcmTokenForWebView();
+        }
+
         @JavascriptInterface
         public void getFirebaseToken() {
-            runOnUiThread(() -> {
-                try {
-                    FirebaseMessaging.getInstance().getToken()
-                            .addOnCompleteListener(new OnCompleteListener<String>() {
-                                @Override
-                                public void onComplete(Task<String> task) {
-                                    if (!task.isSuccessful()) {
-                                        String error = "Failed to get FCM token. Make sure google-services.json is configured correctly.";
-                                        if (task.getException() != null) {
-                                            error += " Error: " + task.getException().getMessage();
-                                        }
-                                        webView.evaluateJavascript(
-                                                "if(window.onFirebaseTokenError) window.onFirebaseTokenError('" + error.replace("'", "\\'") + "');",
-                                                null
-                                        );
-                                        return;
-                                    }
+            fetchFcmTokenForWebView();
+        }
+    }
 
-                                    // Get new FCM registration token
-                                    String token = task.getResult();
-                                    
-                                    // Send token to JavaScript
+    /**
+     * Retrieves the latest FCM token asynchronously and delivers it to the WebView via JS callbacks.
+     */
+    private void fetchFcmTokenForWebView() {
+        runOnUiThread(() -> {
+            try {
+                FirebaseMessaging.getInstance().getToken()
+                        .addOnCompleteListener(new OnCompleteListener<String>() {
+                            @Override
+                            public void onComplete(Task<String> task) {
+                                if (!task.isSuccessful()) {
+                                    String error = "Failed to get FCM token. Make sure google-services.json is configured correctly.";
+                                    if (task.getException() != null) {
+                                        error += " Error: " + task.getException().getMessage();
+                                    }
+                                    String errorArg = JSONObject.quote(error);
                                     webView.evaluateJavascript(
-                                            "if(window.onFirebaseTokenReceived) window.onFirebaseTokenReceived('" + token + "');",
+                                            "if(window.onFcmTokenError) window.onFcmTokenError(" + errorArg + ");"
+                                                    + "if(window.onFirebaseTokenError) window.onFirebaseTokenError(" + errorArg + ");",
                                             null
                                     );
+                                    return;
                                 }
-                            });
-                } catch (Exception e) {
-                    String error = "Firebase not initialized. Please configure google-services.json with package name: com.example.naijameals";
-                    webView.evaluateJavascript(
-                            "if(window.onFirebaseTokenError) window.onFirebaseTokenError('" + error.replace("'", "\\'") + "');",
-                            null
-                    );
-                }
-            });
-        }
+
+                                String token = task.getResult();
+                                String tokenArg = JSONObject.quote(token != null ? token : "");
+                                webView.evaluateJavascript(
+                                        "if(window.onFcmTokenReceived) window.onFcmTokenReceived(" + tokenArg + ");"
+                                                + "if(window.onFirebaseTokenReceived) window.onFirebaseTokenReceived(" + tokenArg + ");",
+                                        null
+                                );
+                            }
+                        });
+            } catch (Exception e) {
+                String error = "Firebase not initialized. Please configure google-services.json with package name: com.example.naijameals";
+                String errorArg = JSONObject.quote(error);
+                webView.evaluateJavascript(
+                        "if(window.onFcmTokenError) window.onFcmTokenError(" + errorArg + ");"
+                                + "if(window.onFirebaseTokenError) window.onFirebaseTokenError(" + errorArg + ");",
+                        null
+                );
+            }
+        });
     }
     
     // Make phone call function
