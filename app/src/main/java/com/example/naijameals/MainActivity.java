@@ -7,6 +7,9 @@ import android.content.Intent;
 import android.content.IntentFilter;
 import android.content.SharedPreferences;
 import android.content.pm.PackageManager;
+import android.location.Location;
+import android.location.LocationListener;
+import android.location.LocationManager;
 import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
@@ -18,9 +21,13 @@ import android.os.VibratorManager;
 import android.util.Log;
 import android.view.animation.AlphaAnimation;
 import android.webkit.JavascriptInterface;
+import android.webkit.JsResult;
 import android.webkit.ValueCallback;
+import android.webkit.GeolocationPermissions;
 import android.webkit.WebChromeClient;
 import android.webkit.WebChromeClient.FileChooserParams;
+import android.webkit.WebResourceRequest;
+import android.webkit.WebSettings;
 import android.webkit.WebView;
 import android.webkit.WebViewClient;
 import android.widget.Toast;
@@ -39,11 +46,13 @@ import org.json.JSONArray;
 import org.json.JSONException;
 import org.json.JSONObject;
 
+
 public class MainActivity extends AppCompatActivity {
 
     private WebView webView;
     private static final int CALL_PHONE_PERMISSION_REQUEST_CODE = 100;
     private static final int NOTIFICATION_PERMISSION_REQUEST_CODE = 101;
+    private static final int LOCATION_PERMISSION_REQUEST_CODE = 102;
     private ValueCallback<Uri[]> fileUploadCallback;
     private ActivityResultLauncher<Intent> filePickerLauncher;
     private static final String PREF_NAME = "pending_notifications";
@@ -154,8 +163,12 @@ public class MainActivity extends AppCompatActivity {
         @JavascriptInterface
         public void makePhoneCall(String phoneNumber) {
             runOnUiThread(() -> {
+                Toast.makeText(MainActivity.this, "Called with: " + phoneNumber, Toast.LENGTH_SHORT).show();
                 makeCall(phoneNumber);
             });
+//            runOnUiThread(() -> {
+//                makeCall(phoneNumber);
+//            });
         }
 
         @JavascriptInterface
@@ -166,6 +179,94 @@ public class MainActivity extends AppCompatActivity {
                 fadeOut.setDuration(150);
                 fadeOut.setFillAfter(true);
                 webView.startAnimation(fadeOut);
+            });
+        }
+
+        @JavascriptInterface
+        public void getLocation() {
+            runOnUiThread(() -> {
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                    if (ContextCompat.checkSelfPermission(MainActivity.this, android.Manifest.permission.ACCESS_FINE_LOCATION)
+                            != PackageManager.PERMISSION_GRANTED) {
+                        requestLocationPermission();
+                        webView.evaluateJavascript(
+                                "if(window.onLocationError) window.onLocationError('Location permission required');",
+                                null
+                        );
+                        return;
+                    }
+                }
+                LocationManager locationManager = (LocationManager) getSystemService(Context.LOCATION_SERVICE);
+                if (locationManager == null) {
+                    webView.evaluateJavascript(
+                            "if(window.onLocationError) window.onLocationError('Location service unavailable');",
+                            null
+                    );
+                    return;
+                }
+                Location lastKnown = null;
+                if (locationManager.isProviderEnabled(LocationManager.GPS_PROVIDER)) {
+                    lastKnown = locationManager.getLastKnownLocation(LocationManager.GPS_PROVIDER);
+                }
+                if (lastKnown == null && locationManager.isProviderEnabled(LocationManager.NETWORK_PROVIDER)) {
+                    lastKnown = locationManager.getLastKnownLocation(LocationManager.NETWORK_PROVIDER);
+                }
+                if (lastKnown != null) {
+                    double lat = lastKnown.getLatitude();
+                    double lng = lastKnown.getLongitude();
+                    String js = "if(window.onLocationReceived) window.onLocationReceived(" + lat + "," + lng + ");";
+                    webView.evaluateJavascript(js, null);
+                    return;
+                }
+                final boolean[] locationDelivered = {false};
+                LocationListener listener = new LocationListener() {
+                    @Override
+                    public void onLocationChanged(Location location) {
+                        if (!locationDelivered[0]) {
+                            locationDelivered[0] = true;
+                            double lat = location.getLatitude();
+                            double lng = location.getLongitude();
+                            String js = "if(window.onLocationReceived) window.onLocationReceived(" + lat + "," + lng + ");";
+                            webView.evaluateJavascript(js, null);
+                        }
+                    }
+                    @Override
+                    public void onProviderEnabled(String provider) {}
+                    @Override
+                    public void onProviderDisabled(String provider) {}
+                    @Override
+                    public void onStatusChanged(String provider, int status, Bundle extras) {}
+                };
+                try {
+                    locationManager.requestSingleUpdate(LocationManager.GPS_PROVIDER, listener, Looper.getMainLooper());
+                } catch (SecurityException e) {
+                    webView.evaluateJavascript(
+                            "if(window.onLocationError) window.onLocationError('Location permission required');",
+                            null
+                    );
+                    return;
+                }
+                new Handler(Looper.getMainLooper()).postDelayed(() -> {
+                    if (!locationDelivered[0]) {
+                        locationDelivered[0] = true;
+                        Location fallback = null;
+                        try {
+                            fallback = locationManager.getLastKnownLocation(LocationManager.NETWORK_PROVIDER);
+                            if (fallback == null) fallback = locationManager.getLastKnownLocation(LocationManager.GPS_PROVIDER);
+                        } catch (SecurityException ignored) {}
+                        if (fallback != null) {
+                            double lat = fallback.getLatitude();
+                            double lng = fallback.getLongitude();
+                            String js = "if(window.onLocationReceived) window.onLocationReceived(" + lat + "," + lng + ");";
+                            webView.evaluateJavascript(js, null);
+                        } else {
+                            webView.evaluateJavascript(
+                                    "if(window.onLocationError) window.onLocationError('Unable to get location. Enable GPS or try again.');",
+                                    null
+                            );
+                        }
+                    }
+                }, 10000);
             });
         }
 
@@ -252,6 +353,37 @@ public class MainActivity extends AppCompatActivity {
         }
     }
     
+    // Request location permission for Android 6.0+
+    private void requestLocationPermission() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+            if (ContextCompat.checkSelfPermission(this, android.Manifest.permission.ACCESS_FINE_LOCATION)
+                    != PackageManager.PERMISSION_GRANTED) {
+                if (ActivityCompat.shouldShowRequestPermissionRationale(this, android.Manifest.permission.ACCESS_FINE_LOCATION)) {
+                    new AlertDialog.Builder(this)
+                            .setTitle("Location Permission")
+                            .setMessage("NaijaMeals needs access to your location to show nearby restaurants and deliver to you.")
+                            .setPositiveButton("OK", (dialog, which) -> {
+                                ActivityCompat.requestPermissions(this,
+                                        new String[]{
+                                                android.Manifest.permission.ACCESS_FINE_LOCATION,
+                                                android.Manifest.permission.ACCESS_COARSE_LOCATION
+                                        },
+                                        LOCATION_PERMISSION_REQUEST_CODE);
+                            })
+                            .setNegativeButton("Cancel", null)
+                            .show();
+                } else {
+                    ActivityCompat.requestPermissions(this,
+                            new String[]{
+                                    android.Manifest.permission.ACCESS_FINE_LOCATION,
+                                    android.Manifest.permission.ACCESS_COARSE_LOCATION
+                            },
+                            LOCATION_PERMISSION_REQUEST_CODE);
+                }
+            }
+        }
+    }
+
     // Request notification permission for Android 13+
     private void requestNotificationPermission() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
@@ -288,6 +420,12 @@ public class MainActivity extends AppCompatActivity {
                 // Notification permission denied
                 Toast.makeText(this, "Notification permission is required to receive notifications", Toast.LENGTH_LONG).show();
             }
+        } else if (requestCode == LOCATION_PERMISSION_REQUEST_CODE) {
+            if (grantResults.length > 0 && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
+                Log.d("MainActivity", "Location permission granted");
+            } else {
+                Toast.makeText(this, "Location permission helps to show nearby restaurants and delivery options", Toast.LENGTH_LONG).show();
+            }
         }
     }
 
@@ -303,6 +441,8 @@ public class MainActivity extends AppCompatActivity {
         
         // Request notification permission for Android 13+
         requestNotificationPermission();
+        // Request location permission for Android 6.0+
+        requestLocationPermission();
         
         // Initialize file picker launcher
         filePickerLauncher = registerForActivityResult(
@@ -369,8 +509,49 @@ public class MainActivity extends AppCompatActivity {
             }
         });
         
-        // Set WebChromeClient to handle file uploads
+        // Set WebChromeClient to handle file uploads and geolocation
         webView.setWebChromeClient(new WebChromeClient() {
+
+            @Override
+            public void onGeolocationPermissionsShowPrompt(String origin, GeolocationPermissions.Callback callback) {
+                // Allow WebView to use location when app has permission
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                    if (ContextCompat.checkSelfPermission(MainActivity.this, android.Manifest.permission.ACCESS_FINE_LOCATION)
+                            == PackageManager.PERMISSION_GRANTED) {
+                        callback.invoke(origin, true, false);
+                    } else {
+                        callback.invoke(origin, false, false);
+                        Toast.makeText(MainActivity.this, "Location permission is required", Toast.LENGTH_SHORT).show();
+                    }
+                } else {
+                    callback.invoke(origin, true, false);
+                }
+            }
+
+            @Override
+            public boolean onJsAlert(WebView view, String url, String message, JsResult result) {
+                new AlertDialog.Builder(view.getContext())
+                        .setMessage(message)
+                        .setPositiveButton("OK", (dialog, which) -> result.confirm())
+                        .setCancelable(false)
+                        .create()
+                        .show();
+                return true; // Important: prevents default dialog
+            }
+
+            @Override
+            public boolean onJsConfirm(WebView view, String url, String message, JsResult result) {
+                new AlertDialog.Builder(view.getContext())
+                        .setMessage(message)
+                        .setPositiveButton("Yes", (dialog, which) -> result.confirm())
+                        .setNegativeButton("Cancel", (dialog, which) -> result.cancel())
+                        .setCancelable(false)
+                        .create()
+                        .show();
+
+                return true; // Prevent default dialog
+            }
+
             @Override
             public boolean onShowFileChooser(WebView webView, ValueCallback<Uri[]> filePathCallback, FileChooserParams fileChooserParams) {
                 // Cancel any previous callback
@@ -408,9 +589,30 @@ public class MainActivity extends AppCompatActivity {
             }
         });
 
+        webView.setWebViewClient(new WebViewClient() {
+            @Override
+            public boolean shouldOverrideUrlLoading(WebView view, WebResourceRequest request) {
+                String url = request.getUrl().toString();
+
+                if (url.startsWith("geo:") || url.contains("google.com/maps")) {
+                    Intent intent = new Intent(Intent.ACTION_VIEW, Uri.parse(url));
+                    view.getContext().startActivity(intent);
+                    return true;
+                }
+
+                return false;
+            }
+        });
+
         // Load the index.html from assets
-//        webView.loadUrl("file:///android_asset/www/index.html");
-        webView.loadUrl("file:///android_asset/www/index.html");
+        WebSettings settings = webView.getSettings();
+        settings.setJavaScriptEnabled(true);
+        settings.setDomStorageEnabled(true);
+        settings.setDatabaseEnabled(true);
+        settings.setCacheMode(WebSettings.LOAD_DEFAULT);
+
+//        webView.loadUrl("http://10.0.2.2:8080");
+          webView.loadUrl("file:///android_asset/www/index.html");
         
         // Debug: Connect to local development server
         // Note: On Android emulator, use "http://10.0.2.2:8081" instead of "localhost"

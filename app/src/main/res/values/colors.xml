@@ -1,13 +1,13 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <color name="purple_200">#D14A0C</color>
-    <color name="purple_500">#D14A0C</color>
-    <color name="purple_700">#D14A0C</color>
-    <color name="teal_200">#D14A0C</color>
-    <color name="teal_700">#D14A0C</color>
-    <color name="black">#D14A0C</color>
-    <color name="white">#D14A0C</color>
+    <color name="purple_200">#0D9488</color>
+    <color name="purple_500">#0D9488</color>
+    <color name="purple_700">#0D9488</color>
+    <color name="teal_200">#0D9488</color>
+    <color name="teal_700">#0D9488</color>
+    <color name="black">#0D9488</color>
+    <color name="white">#0D9488</color>
     <!-- Primary Brand Color #FF079E6E-->
-    <color name="primary_color">#D14A0C</color>
-    <color name="primary_color_dark">#D14A0C</color>
+    <color name="primary_color">#0D9488</color>
+    <color name="primary_color_dark">#0D9488</color>
 </resources>
