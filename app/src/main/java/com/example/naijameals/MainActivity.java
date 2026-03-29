@@ -38,6 +38,7 @@ import androidx.activity.result.contract.ActivityResultContracts;
 import androidx.appcompat.app.AlertDialog;
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.core.app.ActivityCompat;
+import androidx.core.app.NotificationManagerCompat;
 import androidx.core.content.ContextCompat;
 import com.google.android.gms.tasks.OnCompleteListener;
 import com.google.android.gms.tasks.Task;
@@ -798,6 +799,31 @@ public class MainActivity extends AppCompatActivity {
         }
     }
     
+    @Override
+    protected void onResume() {
+        super.onResume();
+        dismissOrderNotificationsAndStopAlertFeedback();
+    }
+
+    /**
+     * Clears posted notifications (stops ringtone / heads-up tied to them) and cancels ongoing
+     * vibration from a new-order alert when the user brings the app to the foreground.
+     */
+    private void dismissOrderNotificationsAndStopAlertFeedback() {
+        NotificationManagerCompat.from(this).cancelAll();
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            VibratorManager vm = (VibratorManager) getSystemService(Context.VIBRATOR_MANAGER_SERVICE);
+            if (vm != null && vm.getDefaultVibrator() != null) {
+                vm.getDefaultVibrator().cancel();
+            }
+        } else {
+            Vibrator v = (Vibrator) getSystemService(Context.VIBRATOR_SERVICE);
+            if (v != null) {
+                v.cancel();
+            }
+        }
+    }
+
     @Override
     protected void onDestroy() {
         super.onDestroy();

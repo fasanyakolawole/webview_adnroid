@@ -1,3 +1,4 @@
 <resources>
     <string name="app_name">Naija Meals</string>
+    <string name="default_notification_channel_id" translatable="false">naija_meals_orders_urgent</string>
 </resources>
