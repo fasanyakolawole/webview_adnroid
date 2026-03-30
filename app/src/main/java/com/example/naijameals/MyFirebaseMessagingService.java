@@ -4,6 +4,11 @@ import android.app.PendingIntent;
 import android.content.Context;
 import android.content.Intent;
 import android.content.SharedPreferences;
+import android.content.pm.PackageManager;
+import android.graphics.Bitmap;
+import android.graphics.Canvas;
+import android.graphics.drawable.BitmapDrawable;
+import android.graphics.drawable.Drawable;
 import android.media.RingtoneManager;
 import android.net.Uri;
 import android.os.Build;
@@ -149,44 +154,16 @@ public class MyFirebaseMessagingService extends FirebaseMessagingService {
         if (ringSoundUri == null) {
             ringSoundUri = RingtoneManager.getDefaultUri(RingtoneManager.TYPE_NOTIFICATION);
         }
-        
-        // Use app launcher icon for notifications
-        // Try ic_launcher_foreground first (your app icon)
-        int iconResId = getResources().getIdentifier("ic_launcher_foreground", "drawable", getPackageName());
-        if (iconResId == 0) {
-            // Try regular launcher icon
-            iconResId = getResources().getIdentifier("ic_launcher", "mipmap", getPackageName());
+
+        int smallIconId = appContext.getApplicationInfo().icon;
+        if (smallIconId == 0) {
+            smallIconId = R.drawable.ic_notification;
         }
-        if (iconResId == 0) {
-            // Try round icon
-            iconResId = getResources().getIdentifier("ic_launcher_round", "mipmap", getPackageName());
-        }
-        if (iconResId == 0) {
-            // Fallback to notification icon or default
-            iconResId = getResources().getIdentifier("ic_notification", "drawable", getPackageName());
-        }
-        if (iconResId == 0) {
-            iconResId = android.R.drawable.ic_dialog_info; // Final fallback
-        }
-        
-        // Get large icon bitmap for better visibility (use app icon)
-        android.graphics.Bitmap largeIcon = null;
-        try {
-            // Try to get the launcher icon as large icon
-            int largeIconResId = getResources().getIdentifier("ic_launcher", "mipmap", getPackageName());
-            if (largeIconResId == 0) {
-                largeIconResId = getResources().getIdentifier("ic_launcher_foreground", "drawable", getPackageName());
-            }
-            if (largeIconResId != 0) {
-                largeIcon = android.graphics.BitmapFactory.decodeResource(getResources(), largeIconResId);
-            }
-        } catch (Exception e) {
-            // If decoding fails, largeIcon will remain null
-            Log.e(TAG, "Error loading large icon: " + e.getMessage());
-        }
+
+        Bitmap largeIcon = loadLauncherIconBitmap(appContext);
         
         NotificationCompat.Builder notificationBuilder = new NotificationCompat.Builder(appContext, OrderNotificationChannel.CHANNEL_ID)
-                .setSmallIcon(iconResId)
+                .setSmallIcon(smallIconId)
                 .setContentTitle(title)
                 .setContentText(messageBody)
                 .setAutoCancel(true)
@@ -206,6 +183,40 @@ public class MyFirebaseMessagingService extends FirebaseMessagingService {
         }
 
         NotificationManagerCompat.from(appContext).notify(notificationId, notificationBuilder.build());
+    }
+
+    /**
+     * Same icon the user sees on the home screen (handles adaptive icons; avoids decodeResource on XML mipmaps).
+     */
+    private static Bitmap loadLauncherIconBitmap(Context context) {
+        try {
+            Drawable d = context.getPackageManager().getApplicationIcon(context.getPackageName());
+            return drawableToBitmap(d, context);
+        } catch (PackageManager.NameNotFoundException e) {
+            Log.e(TAG, "Could not load app icon", e);
+            return null;
+        }
+    }
+
+    private static Bitmap drawableToBitmap(Drawable drawable, Context context) {
+        if (drawable instanceof BitmapDrawable) {
+            Bitmap bm = ((BitmapDrawable) drawable).getBitmap();
+            if (bm != null && !bm.isRecycled()) {
+                return bm;
+            }
+        }
+        int w = drawable.getIntrinsicWidth();
+        int h = drawable.getIntrinsicHeight();
+        float density = context.getResources().getDisplayMetrics().density;
+        if (w <= 0 || h <= 0) {
+            int px = Math.round(64 * density);
+            w = h = px;
+        }
+        Bitmap bitmap = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888);
+        Canvas canvas = new Canvas(bitmap);
+        drawable.setBounds(0, 0, canvas.getWidth(), canvas.getHeight());
+        drawable.draw(canvas);
+        return bitmap;
     }
 
     private void vibrateDevice() {
