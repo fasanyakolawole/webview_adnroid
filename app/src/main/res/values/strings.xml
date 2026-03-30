@@ -4,5 +4,5 @@
     <string name="driver_location_native_channel_name">Driver location</string>
     <string name="driver_location_native_channel_desc">Sends your position to the server while you are online.</string>
     <string name="driver_location_native_notification_title">Driver location active</string>
-    <string name="driver_location_native_notification_text">Naija meals is using location to look for deliveries around</string>
+    <string name="driver_location_native_notification_text">Naija Meals is using location service to find nearby delivery</string>
 </resources>
