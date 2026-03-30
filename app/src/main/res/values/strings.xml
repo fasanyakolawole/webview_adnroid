@@ -1,4 +1,8 @@
 <resources>
     <string name="app_name">Naija Meals</string>
     <string name="default_notification_channel_id" translatable="false">naija_meals_orders_urgent</string>
+    <string name="driver_location_native_channel_name">Driver location</string>
+    <string name="driver_location_native_channel_desc">Sends your position to the server while you are online.</string>
+    <string name="driver_location_native_notification_title">Driver location active</string>
+    <string name="driver_location_native_notification_text">Sending GPS to Naija Meals in the background.</string>
 </resources>

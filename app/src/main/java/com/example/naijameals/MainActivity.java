@@ -1,7 +1,9 @@
 package com.example.naijameals;
 
 import android.annotation.SuppressLint;
+import android.app.NotificationManager;
 import android.content.BroadcastReceiver;
+import android.service.notification.StatusBarNotification;
 import android.content.Context;
 import android.content.Intent;
 import android.content.IntentFilter;
@@ -12,6 +14,8 @@ import android.location.LocationListener;
 import android.location.LocationManager;
 import android.net.Uri;
 import android.os.Build;
+import android.os.PowerManager;
+import android.provider.Settings;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
@@ -46,11 +50,15 @@ import com.google.firebase.messaging.FirebaseMessaging;
 import org.json.JSONArray;
 import org.json.JSONException;
 import org.json.JSONObject;
+import org.json.JSONTokener;
 
 
 public class MainActivity extends AppCompatActivity {
 
+    private static final String TAG = "MainActivity";
+
     private WebView webView;
+
     private static final int CALL_PHONE_PERMISSION_REQUEST_CODE = 100;
     private static final int NOTIFICATION_PERMISSION_REQUEST_CODE = 101;
     private static final int LOCATION_PERMISSION_REQUEST_CODE = 102;
@@ -58,6 +66,8 @@ public class MainActivity extends AppCompatActivity {
     private ActivityResultLauncher<Intent> filePickerLauncher;
     private static final String PREF_NAME = "pending_notifications";
     private static final String PREF_KEY_NOTIFICATIONS = "notifications_list";
+    private static final String PREF_HEARTBEAT = "js_heartbeat_prefs";
+    private static final String PREF_KEY_BATTERY_PROMPTED = "battery_exemption_prompted";
     private BroadcastReceiver notificationReceiver;
 
     // JavaScript Interface class
@@ -285,6 +295,19 @@ public class MainActivity extends AppCompatActivity {
         @JavascriptInterface
         public void getFirebaseToken() {
             fetchFcmTokenForWebView();
+        }
+
+        /**
+         * Optional: call from web after login so native location works before next page load:
+         * {@code Android.notifyDriverToken(localStorage.getItem('@driver_token'));}
+         */
+        @JavascriptInterface
+        public void notifyDriverToken(String token) {
+            runOnUiThread(() -> {
+                if (token != null && !token.trim().isEmpty()) {
+                    DriverTokenStore.save(MainActivity.this, token.trim());
+                }
+            });
         }
     }
 
@@ -624,6 +647,14 @@ public class MainActivity extends AppCompatActivity {
 
                 return false;
             }
+
+            @Override
+            public void onPageFinished(WebView view, String url) {
+                if (isFinishing() || isDestroyedCompat()) {
+                    return;
+                }
+                syncDriverTokenFromWebView(view);
+            }
         });
 
         // Load the index.html from assets
@@ -640,6 +671,10 @@ public class MainActivity extends AppCompatActivity {
         // Note: On Android emulator, use "http://10.0.2.2:8081" instead of "localhost"
         // On physical device, use your computer's IP address (e.g., "http://192.168.1.100:8081")
 //        webView.loadUrl("http://10.0.2.2:8081");
+
+        DriverLocationNativeForegroundService.start(this);
+
+        new Handler(Looper.getMainLooper()).postDelayed(this::maybePromptBatteryExemptionOnce, 2500);
         
         // Check for pending notifications and show as alerts
         // Delay this slightly to ensure activity is fully initialized
@@ -662,6 +697,67 @@ public class MainActivity extends AppCompatActivity {
             return isDestroyed();
         }
         return false;
+    }
+
+    private void syncDriverTokenFromWebView(WebView view) {
+        view.evaluateJavascript(
+                "(function(){try{var t=localStorage.getItem('@driver_token');return t==null?'':String(t);}catch(e){return '';}})()",
+                value -> {
+                    if (isFinishing() || isDestroyedCompat()) {
+                        return;
+                    }
+                    String token = parseJsonStringFromJsCallback(value);
+                    if (token != null && !token.isEmpty()) {
+                        DriverTokenStore.save(MainActivity.this, token);
+                    }
+                }
+        );
+    }
+
+    private static String parseJsonStringFromJsCallback(String raw) {
+        if (raw == null || "null".equals(raw)) {
+            return null;
+        }
+        try {
+            Object o = new JSONTokener(raw).nextValue();
+            if (o instanceof String) {
+                return (String) o;
+            }
+        } catch (Exception ignored) {
+        }
+        return null;
+    }
+
+    /**
+     * Unrestricted battery helps the location service run on a locked screen; shown once.
+     */
+    private void maybePromptBatteryExemptionOnce() {
+        if (isFinishing() || isDestroyedCompat()) {
+            return;
+        }
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.M) {
+            return;
+        }
+        SharedPreferences p = getSharedPreferences(PREF_HEARTBEAT, MODE_PRIVATE);
+        if (p.getBoolean(PREF_KEY_BATTERY_PROMPTED, false)) {
+            return;
+        }
+        PowerManager pm = (PowerManager) getSystemService(Context.POWER_SERVICE);
+        if (pm != null && pm.isIgnoringBatteryOptimizations(getPackageName())) {
+            p.edit().putBoolean(PREF_KEY_BATTERY_PROMPTED, true).apply();
+            return;
+        }
+        p.edit().putBoolean(PREF_KEY_BATTERY_PROMPTED, true).apply();
+        try {
+            Intent i = new Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS);
+            i.setData(Uri.parse("package:" + getPackageName()));
+            startActivity(i);
+        } catch (Exception e) {
+            try {
+                startActivity(new Intent(Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS));
+            } catch (Exception ignored) {
+            }
+        }
     }
     
     // Register broadcast receiver to show notifications immediately when app is running
@@ -803,6 +899,9 @@ public class MainActivity extends AppCompatActivity {
     protected void onResume() {
         super.onResume();
         dismissOrderNotificationsAndStopAlertFeedback();
+        if (webView != null && !isFinishing() && !isDestroyedCompat()) {
+            syncDriverTokenFromWebView(webView);
+        }
     }
 
     /**
@@ -810,7 +909,19 @@ public class MainActivity extends AppCompatActivity {
      * vibration from a new-order alert when the user brings the app to the foreground.
      */
     private void dismissOrderNotificationsAndStopAlertFeedback() {
-        NotificationManagerCompat.from(this).cancelAll();
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            NotificationManager nm = getSystemService(NotificationManager.class);
+            if (nm != null) {
+                for (StatusBarNotification sbn : nm.getActiveNotifications()) {
+                    android.app.Notification n = sbn.getNotification();
+                    if (n != null && OrderNotificationChannel.CHANNEL_ID.equals(n.getChannelId())) {
+                        nm.cancel(sbn.getTag(), sbn.getId());
+                    }
+                }
+            }
+        } else {
+            NotificationManagerCompat.from(this).cancelAll();
+        }
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
             VibratorManager vm = (VibratorManager) getSystemService(Context.VIBRATOR_MANAGER_SERVICE);
             if (vm != null && vm.getDefaultVibrator() != null) {
@@ -847,3 +958,55 @@ public class MainActivity extends AppCompatActivity {
         }
     }
 }
+
+
+//<script>
+//function yourJsFunction() {
+//        const token = localStorage.getItem("@driver_token");
+//    console.log("TOKEN:", token);
+//
+//        const myHeaders = new Headers();
+//    myHeaders.append("Authorization", "Bearer " + token);
+//    myHeaders.append("Accept", "application/json");
+//    myHeaders.append("Content-Type", "application/json");
+//
+//    if (!navigator.geolocation) {
+//        alert("Geolocation is not supported by this browser.");
+//        return;
+//    }
+//
+//    navigator.geolocation.getCurrentPosition(
+//            (position) => {
+//                const raw = JSON.stringify({
+//            latitude: position.coords.latitude,
+//            longitude: position.coords.longitude
+//                });
+//
+//    fetch("https://api.naijameals.com/api/driver/location", {
+//            method: "PUT",
+//            headers: myHeaders,
+//            body: raw
+//                })
+//                .then(async res => {
+//                    const text = await res.text();
+//    console.log("STATUS:", res.status);
+//    console.log("RESPONSE:", text);
+//    alert(text);
+//                })
+//                .catch(error => {
+//            console.error(error);
+//    alert("Fetch error: " + error);
+//                });
+//            },
+//    (error) => {
+//        console.error(error);
+//        alert("Error getting location: " + error.message);
+//    },
+//    {
+//        enableHighAccuracy: true,
+//                timeout: 10000,
+//            maximumAge: 0
+//    }
+//        );
+//}
+//</script>
