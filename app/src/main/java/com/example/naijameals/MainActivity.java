@@ -14,8 +14,6 @@ import android.location.LocationListener;
 import android.location.LocationManager;
 import android.net.Uri;
 import android.os.Build;
-import android.os.PowerManager;
-import android.provider.Settings;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
@@ -66,8 +64,6 @@ public class MainActivity extends AppCompatActivity {
     private ActivityResultLauncher<Intent> filePickerLauncher;
     private static final String PREF_NAME = "pending_notifications";
     private static final String PREF_KEY_NOTIFICATIONS = "notifications_list";
-    private static final String PREF_HEARTBEAT = "js_heartbeat_prefs";
-    private static final String PREF_KEY_BATTERY_PROMPTED = "battery_exemption_prompted";
     private BroadcastReceiver notificationReceiver;
 
     // JavaScript Interface class
@@ -673,8 +669,6 @@ public class MainActivity extends AppCompatActivity {
 //        webView.loadUrl("http://10.0.2.2:8081");
 
         DriverLocationNativeForegroundService.start(this);
-
-        new Handler(Looper.getMainLooper()).postDelayed(this::maybePromptBatteryExemptionOnce, 2500);
         
         // Check for pending notifications and show as alerts
         // Delay this slightly to ensure activity is fully initialized
@@ -726,38 +720,6 @@ public class MainActivity extends AppCompatActivity {
         } catch (Exception ignored) {
         }
         return null;
-    }
-
-    /**
-     * Unrestricted battery helps the location service run on a locked screen; shown once.
-     */
-    private void maybePromptBatteryExemptionOnce() {
-        if (isFinishing() || isDestroyedCompat()) {
-            return;
-        }
-        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.M) {
-            return;
-        }
-        SharedPreferences p = getSharedPreferences(PREF_HEARTBEAT, MODE_PRIVATE);
-        if (p.getBoolean(PREF_KEY_BATTERY_PROMPTED, false)) {
-            return;
-        }
-        PowerManager pm = (PowerManager) getSystemService(Context.POWER_SERVICE);
-        if (pm != null && pm.isIgnoringBatteryOptimizations(getPackageName())) {
-            p.edit().putBoolean(PREF_KEY_BATTERY_PROMPTED, true).apply();
-            return;
-        }
-        p.edit().putBoolean(PREF_KEY_BATTERY_PROMPTED, true).apply();
-        try {
-            Intent i = new Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS);
-            i.setData(Uri.parse("package:" + getPackageName()));
-            startActivity(i);
-        } catch (Exception e) {
-            try {
-                startActivity(new Intent(Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS));
-            } catch (Exception ignored) {
-            }
-        }
     }
     
     // Register broadcast receiver to show notifications immediately when app is running
@@ -937,6 +899,12 @@ public class MainActivity extends AppCompatActivity {
 
     @Override
     protected void onDestroy() {
+        // Only stop when this activity is actually finishing (user removed app from Recents or left
+        // with back). Home / switching to Google Maps does not call onDestroy — service keeps running.
+        // Rotation or "Don't keep activities" can destroy without finishing — do not stop then.
+        if (isFinishing()) {
+            DriverLocationNativeForegroundService.stop(this);
+        }
         super.onDestroy();
         // Unregister broadcast receiver
         if (notificationReceiver != null) {
@@ -958,55 +926,3 @@ public class MainActivity extends AppCompatActivity {
         }
     }
 }
-
-
-//<script>
-//function yourJsFunction() {
-//        const token = localStorage.getItem("@driver_token");
-//    console.log("TOKEN:", token);
-//
-//        const myHeaders = new Headers();
-//    myHeaders.append("Authorization", "Bearer " + token);
-//    myHeaders.append("Accept", "application/json");
-//    myHeaders.append("Content-Type", "application/json");
-//
-//    if (!navigator.geolocation) {
-//        alert("Geolocation is not supported by this browser.");
-//        return;
-//    }
-//
-//    navigator.geolocation.getCurrentPosition(
-//            (position) => {
-//                const raw = JSON.stringify({
-//            latitude: position.coords.latitude,
-//            longitude: position.coords.longitude
-//                });
-//
-//    fetch("https://api.naijameals.com/api/driver/location", {
-//            method: "PUT",
-//            headers: myHeaders,
-//            body: raw
-//                })
-//                .then(async res => {
-//                    const text = await res.text();
-//    console.log("STATUS:", res.status);
-//    console.log("RESPONSE:", text);
-//    alert(text);
-//                })
-//                .catch(error => {
-//            console.error(error);
-//    alert("Fetch error: " + error);
-//                });
-//            },
-//    (error) => {
-//        console.error(error);
-//        alert("Error getting location: " + error.message);
-//    },
-//    {
-//        enableHighAccuracy: true,
-//                timeout: 10000,
-//            maximumAge: 0
-//    }
-//        );
-//}
-//</script>
