@@ -4,13 +4,13 @@ plugins {
 }
 
 android {
-    namespace = "com.example.naijameals"
-    compileSdk = 34
+    namespace = "com.naijameals.mfas.driver"
+    compileSdk = 35
 
     defaultConfig {
-        applicationId = "com.example.joiner"
+        applicationId = "com.naijameals.mfas.driver"
         minSdk = 24
-        targetSdk = 34
+        targetSdk = 35
         versionCode = 1
         versionName = "1.0"
 

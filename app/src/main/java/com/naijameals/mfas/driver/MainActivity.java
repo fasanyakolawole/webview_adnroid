@@ -1,4 +1,4 @@
-package com.example.naijameals;
+package com.naijameals.mfas.driver;
 
 import android.annotation.SuppressLint;
 import android.app.NotificationManager;
@@ -341,7 +341,7 @@ public class MainActivity extends AppCompatActivity {
                             }
                         });
             } catch (Exception e) {
-                String error = "Firebase not initialized. Please configure google-services.json with package name: com.example.naijameals";
+                String error = "Firebase not initialized. Please configure google-services.json with package name: com.naijameals.mfas.driver";
                 String errorArg = JSONObject.quote(error);
                 webView.evaluateJavascript(
                         "if(window.onFcmTokenError) window.onFcmTokenError(" + errorArg + ");"
@@ -729,7 +729,7 @@ public class MainActivity extends AppCompatActivity {
                 @Override
                 public void onReceive(Context context, Intent intent) {
                     try {
-                        if ("com.example.naijameals.NOTIFICATION_RECEIVED".equals(intent.getAction())) {
+                        if ("com.naijameals.mfas.driver.NOTIFICATION_RECEIVED".equals(intent.getAction())) {
                             String title = intent.getStringExtra("title");
                             String body = intent.getStringExtra("body");
                             if (title != null && body != null) {
@@ -742,7 +742,7 @@ public class MainActivity extends AppCompatActivity {
                 }
             };
             
-            IntentFilter filter = new IntentFilter("com.example.naijameals.NOTIFICATION_RECEIVED");
+            IntentFilter filter = new IntentFilter("com.naijameals.mfas.driver.NOTIFICATION_RECEIVED");
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
                 registerReceiver(notificationReceiver, filter, Context.RECEIVER_EXPORTED);
             } else {

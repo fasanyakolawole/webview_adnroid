@@ -1,4 +1,4 @@
-package com.example.naijameals;
+package com.naijameals.mfas.driver;
 
 import android.app.PendingIntent;
 import android.content.Context;
@@ -89,7 +89,7 @@ public class MyFirebaseMessagingService extends FirebaseMessagingService {
 
             vibrateDevice();
 
-            Intent broadcastIntent = new Intent("com.example.naijameals.NOTIFICATION_RECEIVED");
+            Intent broadcastIntent = new Intent("com.naijameals.mfas.driver.NOTIFICATION_RECEIVED");
             broadcastIntent.putExtra("title", displayTitle);
             broadcastIntent.putExtra("body", body);
             sendBroadcast(broadcastIntent);
