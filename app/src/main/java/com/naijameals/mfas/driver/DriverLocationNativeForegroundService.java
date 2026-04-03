@@ -16,6 +16,7 @@ import android.os.Handler;
 import android.os.IBinder;
 import android.os.Looper;
 import android.os.PowerManager;
+import android.os.SystemClock;
 import android.util.Log;
 
 import androidx.annotation.Nullable;
@@ -59,12 +60,15 @@ public class DriverLocationNativeForegroundService extends Service {
     public static final int NOTIFICATION_ID = 20003;
 
     private static final String CHANNEL_ID = "driver_location_native";
+    /** Wall-clock cadence: next {@link #runLocationCycle} starts ~30s after this cycle started (not after it ends). */
     private static final long INTERVAL_MS = 30_000L;
     private static final String LOCATION_URL = "https://api.naijameals.com/api/driver/location";
     private static final MediaType JSON = MediaType.get("application/json; charset=utf-8");
 
     private final Handler handler = new Handler(Looper.getMainLooper());
     private final Runnable cycleRunnable = this::runLocationCycle;
+    /** Elapsed realtime when {@link #runLocationCycle} began; used to keep PUTs on a ~30s cadence. */
+    private long cycleStartElapsedMs;
 
     private final ExecutorService httpExecutor = Executors.newSingleThreadExecutor();
     private final OkHttpClient httpClient = new OkHttpClient.Builder()
@@ -115,6 +119,7 @@ public class DriverLocationNativeForegroundService extends Service {
     }
 
     private void runLocationCycle() {
+        cycleStartElapsedMs = SystemClock.elapsedRealtime();
         PowerManager pm = (PowerManager) getSystemService(Context.POWER_SERVICE);
         PowerManager.WakeLock wl = pm.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "NaijaMeals:DriverLoc");
         wl.setReferenceCounted(false);
@@ -200,7 +205,9 @@ public class DriverLocationNativeForegroundService extends Service {
             }
         } catch (RuntimeException ignored) {
         }
-        handler.postDelayed(cycleRunnable, INTERVAL_MS);
+        long elapsed = SystemClock.elapsedRealtime() - cycleStartElapsedMs;
+        long nextDelayMs = Math.max(0L, INTERVAL_MS - elapsed);
+        handler.postDelayed(cycleRunnable, nextDelayMs);
     }
 
     private boolean hasLocationPermission() {
