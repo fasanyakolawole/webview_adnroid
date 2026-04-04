@@ -660,8 +660,8 @@ public class MainActivity extends AppCompatActivity {
         settings.setDatabaseEnabled(true);
         settings.setCacheMode(WebSettings.LOAD_DEFAULT);
 
-//        webView.loadUrl("http://10.0.2.2:8080");
-          webView.loadUrl("file:///android_asset/www/index.html");
+        webView.loadUrl("https://admin.naijameals.com");
+//          webView.loadUrl("file:///android_asset/www/index.html");
         
         // Debug: Connect to local development server
         // Note: On Android emulator, use "http://10.0.2.2:8081" instead of "localhost"

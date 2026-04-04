@@ -19,6 +19,11 @@
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_LOCATION" />
     <uses-permission android:name="android.permission.WAKE_LOCK" />
 
+    <!-- Merged from Play services / Firebase Analytics; app does not use Advertising ID (Play Console). -->
+    <uses-permission android:name="com.google.android.gms.permission.AD_ID" tools:node="remove" />
+    <uses-permission android:name="android.permission.ACCESS_ADSERVICES_AD_ID" tools:node="remove" />
+    <uses-permission android:name="android.permission.ACCESS_ADSERVICES_ATTRIBUTION" tools:node="remove" />
+
     <uses-feature
         android:name="android.hardware.location"
         android:required="false" />
@@ -38,6 +43,10 @@
         android:theme="@style/Theme.NaijaMeals"
         android:usesCleartextTraffic="true"
         tools:targetApi="31">
+
+        <meta-data
+            android:name="google_analytics_adid_collection_enabled"
+            android:value="false" />
 
         <!-- Use the same urgent channel when FCM displays a notification (must match OrderNotificationChannel). -->
         <meta-data
