@@ -28,6 +28,7 @@ import android.webkit.ValueCallback;
 import android.webkit.GeolocationPermissions;
 import android.webkit.WebChromeClient;
 import android.webkit.WebChromeClient.FileChooserParams;
+import android.webkit.WebResourceError;
 import android.webkit.WebResourceRequest;
 import android.webkit.WebSettings;
 import android.webkit.WebView;
@@ -56,6 +57,11 @@ public class MainActivity extends AppCompatActivity {
     private static final String TAG = "MainActivity";
 
     private WebView webView;
+
+    /** Primary Web UI URL — used for load/retry only; never shown in user-facing error UI. */
+    private static final String MAIN_WEB_URL = "https://admin.naijameals.com";
+
+    private AlertDialog connectivityAlertDialog;
 
     private static final int CALL_PHONE_PERMISSION_REQUEST_CODE = 100;
     private static final int NOTIFICATION_PERMISSION_REQUEST_CODE = 101;
@@ -541,15 +547,6 @@ public class MainActivity extends AppCompatActivity {
         // Add JavaScript interface
         webView.addJavascriptInterface(new WebAppInterface(), "Android");
         
-        // Set WebViewClient to handle page navigation
-        webView.setWebViewClient(new WebViewClient() {
-            @Override
-            public boolean shouldOverrideUrlLoading(WebView view, String url) {
-                // Load all URLs within the WebView
-                return false;
-            }
-        });
-        
         // Set WebChromeClient to handle file uploads and geolocation
         webView.setWebChromeClient(new WebChromeClient() {
 
@@ -645,8 +642,32 @@ public class MainActivity extends AppCompatActivity {
             }
 
             @Override
+            public void onReceivedError(WebView view, WebResourceRequest request, WebResourceError error) {
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M
+                        && request != null
+                        && request.isForMainFrame()) {
+                    clearWebViewAndShowOfflineUi(view);
+                    return;
+                }
+                super.onReceivedError(view, request, error);
+            }
+
+            @SuppressWarnings("deprecation")
+            @Override
+            public void onReceivedError(WebView view, int errorCode, String description, String failingUrl) {
+                if (Build.VERSION.SDK_INT < Build.VERSION_CODES.M) {
+                    clearWebViewAndShowOfflineUi(view);
+                    return;
+                }
+                super.onReceivedError(view, errorCode, description, failingUrl);
+            }
+
+            @Override
             public void onPageFinished(WebView view, String url) {
                 if (isFinishing() || isDestroyedCompat()) {
+                    return;
+                }
+                if (url != null && url.startsWith("about:")) {
                     return;
                 }
                 syncDriverTokenFromWebView(view);
@@ -660,7 +681,7 @@ public class MainActivity extends AppCompatActivity {
         settings.setDatabaseEnabled(true);
         settings.setCacheMode(WebSettings.LOAD_DEFAULT);
 
-        webView.loadUrl("https://admin.naijameals.com");
+        webView.loadUrl(MAIN_WEB_URL);
 //          webView.loadUrl("file:///android_asset/www/index.html");
         
         // Debug: Connect to local development server
@@ -691,6 +712,42 @@ public class MainActivity extends AppCompatActivity {
             return isDestroyed();
         }
         return false;
+    }
+
+    /** Clears the built-in error page (which exposes the failing URL) and shows a generic offline dialog. */
+    private void clearWebViewAndShowOfflineUi(WebView view) {
+        if (view == null || isFinishing() || isDestroyedCompat()) {
+            return;
+        }
+        view.stopLoading();
+        view.loadUrl("about:blank");
+        showConnectivityRequiredDialog();
+    }
+
+    private void showConnectivityRequiredDialog() {
+        if (isFinishing() || isDestroyedCompat()) {
+            return;
+        }
+        runOnUiThread(() -> {
+            if (isFinishing() || isDestroyedCompat()) {
+                return;
+            }
+            if (connectivityAlertDialog != null && connectivityAlertDialog.isShowing()) {
+                return;
+            }
+            connectivityAlertDialog = new AlertDialog.Builder(MainActivity.this)
+                    .setMessage("This app requires an internet connection to function.")
+                    .setPositiveButton("Retry", (d, which) -> {
+                        connectivityAlertDialog = null;
+                        if (webView != null && !isFinishing() && !isDestroyedCompat()) {
+                            webView.loadUrl(MAIN_WEB_URL);
+                        }
+                    })
+                    .setCancelable(false)
+                    .create();
+            connectivityAlertDialog.setOnDismissListener(dialog -> connectivityAlertDialog = null);
+            connectivityAlertDialog.show();
+        });
     }
 
     private void syncDriverTokenFromWebView(WebView view) {
@@ -905,6 +962,13 @@ public class MainActivity extends AppCompatActivity {
         if (isFinishing()) {
             DriverLocationNativeForegroundService.stop(this);
         }
+        if (connectivityAlertDialog != null && connectivityAlertDialog.isShowing()) {
+            try {
+                connectivityAlertDialog.dismiss();
+            } catch (Exception ignored) {
+            }
+        }
+        connectivityAlertDialog = null;
         super.onDestroy();
         // Unregister broadcast receiver
         if (notificationReceiver != null) {
