@@ -9,9 +9,6 @@ import android.content.Intent;
 import android.content.IntentFilter;
 import android.content.SharedPreferences;
 import android.content.pm.PackageManager;
-import android.location.Location;
-import android.location.LocationListener;
-import android.location.LocationManager;
 import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
@@ -59,13 +56,11 @@ public class MainActivity extends AppCompatActivity {
     private WebView webView;
 
     /** Primary Web UI URL — used for load/retry only; never shown in user-facing error UI. */
-    private static final String MAIN_WEB_URL = "https://admin.naijameals.com";
 
     private AlertDialog connectivityAlertDialog;
 
     private static final int CALL_PHONE_PERMISSION_REQUEST_CODE = 100;
     private static final int NOTIFICATION_PERMISSION_REQUEST_CODE = 101;
-    private static final int LOCATION_PERMISSION_REQUEST_CODE = 102;
     private ValueCallback<Uri[]> fileUploadCallback;
     private ActivityResultLauncher<Intent> filePickerLauncher;
     private static final String PREF_NAME = "pending_notifications";
@@ -195,94 +190,6 @@ public class MainActivity extends AppCompatActivity {
             });
         }
 
-        @JavascriptInterface
-        public void getLocation() {
-            runOnUiThread(() -> {
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-                    if (ContextCompat.checkSelfPermission(MainActivity.this, android.Manifest.permission.ACCESS_FINE_LOCATION)
-                            != PackageManager.PERMISSION_GRANTED) {
-                        requestLocationPermission();
-                        webView.evaluateJavascript(
-                                "if(window.onLocationError) window.onLocationError('Location permission required');",
-                                null
-                        );
-                        return;
-                    }
-                }
-                LocationManager locationManager = (LocationManager) getSystemService(Context.LOCATION_SERVICE);
-                if (locationManager == null) {
-                    webView.evaluateJavascript(
-                            "if(window.onLocationError) window.onLocationError('Location service unavailable');",
-                            null
-                    );
-                    return;
-                }
-                Location lastKnown = null;
-                if (locationManager.isProviderEnabled(LocationManager.GPS_PROVIDER)) {
-                    lastKnown = locationManager.getLastKnownLocation(LocationManager.GPS_PROVIDER);
-                }
-                if (lastKnown == null && locationManager.isProviderEnabled(LocationManager.NETWORK_PROVIDER)) {
-                    lastKnown = locationManager.getLastKnownLocation(LocationManager.NETWORK_PROVIDER);
-                }
-                if (lastKnown != null) {
-                    double lat = lastKnown.getLatitude();
-                    double lng = lastKnown.getLongitude();
-                    String js = "if(window.onLocationReceived) window.onLocationReceived(" + lat + "," + lng + ");";
-                    webView.evaluateJavascript(js, null);
-                    return;
-                }
-                final boolean[] locationDelivered = {false};
-                LocationListener listener = new LocationListener() {
-                    @Override
-                    public void onLocationChanged(Location location) {
-                        if (!locationDelivered[0]) {
-                            locationDelivered[0] = true;
-                            double lat = location.getLatitude();
-                            double lng = location.getLongitude();
-                            String js = "if(window.onLocationReceived) window.onLocationReceived(" + lat + "," + lng + ");";
-                            webView.evaluateJavascript(js, null);
-                        }
-                    }
-                    @Override
-                    public void onProviderEnabled(String provider) {}
-                    @Override
-                    public void onProviderDisabled(String provider) {}
-                    @Override
-                    public void onStatusChanged(String provider, int status, Bundle extras) {}
-                };
-                try {
-                    locationManager.requestSingleUpdate(LocationManager.GPS_PROVIDER, listener, Looper.getMainLooper());
-                } catch (SecurityException e) {
-                    webView.evaluateJavascript(
-                            "if(window.onLocationError) window.onLocationError('Location permission required');",
-                            null
-                    );
-                    return;
-                }
-                new Handler(Looper.getMainLooper()).postDelayed(() -> {
-                    if (!locationDelivered[0]) {
-                        locationDelivered[0] = true;
-                        Location fallback = null;
-                        try {
-                            fallback = locationManager.getLastKnownLocation(LocationManager.NETWORK_PROVIDER);
-                            if (fallback == null) fallback = locationManager.getLastKnownLocation(LocationManager.GPS_PROVIDER);
-                        } catch (SecurityException ignored) {}
-                        if (fallback != null) {
-                            double lat = fallback.getLatitude();
-                            double lng = fallback.getLongitude();
-                            String js = "if(window.onLocationReceived) window.onLocationReceived(" + lat + "," + lng + ");";
-                            webView.evaluateJavascript(js, null);
-                        } else {
-                            webView.evaluateJavascript(
-                                    "if(window.onLocationError) window.onLocationError('Unable to get location. Enable GPS or try again.');",
-                                    null
-                            );
-                        }
-                    }
-                }, 10000);
-            });
-        }
-
         /**
          * Fetches the current FCM registration token (refreshed by Firebase as needed) and invokes JS callbacks.
          * From the WebView: {@code Android.getFcmToken();}
@@ -300,7 +207,7 @@ public class MainActivity extends AppCompatActivity {
         }
 
         /**
-         * Optional: call from web after login so native location works before next page load:
+         * Optional: call from web after login to persist the driver token for native features.
          * {@code Android.notifyDriverToken(localStorage.getItem('@driver_token'));}
          */
         @JavascriptInterface
@@ -400,37 +307,6 @@ public class MainActivity extends AppCompatActivity {
         }
     }
     
-    // Request location permission for Android 6.0+
-    private void requestLocationPermission() {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-            if (ContextCompat.checkSelfPermission(this, android.Manifest.permission.ACCESS_FINE_LOCATION)
-                    != PackageManager.PERMISSION_GRANTED) {
-                if (ActivityCompat.shouldShowRequestPermissionRationale(this, android.Manifest.permission.ACCESS_FINE_LOCATION)) {
-                    new AlertDialog.Builder(this)
-                            .setTitle("Location Permission")
-                            .setMessage("NaijaMeals needs access to your location to show nearby restaurants and deliver to you.")
-                            .setPositiveButton("OK", (dialog, which) -> {
-                                ActivityCompat.requestPermissions(this,
-                                        new String[]{
-                                                android.Manifest.permission.ACCESS_FINE_LOCATION,
-                                                android.Manifest.permission.ACCESS_COARSE_LOCATION
-                                        },
-                                        LOCATION_PERMISSION_REQUEST_CODE);
-                            })
-                            .setNegativeButton("Cancel", null)
-                            .show();
-                } else {
-                    ActivityCompat.requestPermissions(this,
-                            new String[]{
-                                    android.Manifest.permission.ACCESS_FINE_LOCATION,
-                                    android.Manifest.permission.ACCESS_COARSE_LOCATION
-                            },
-                            LOCATION_PERMISSION_REQUEST_CODE);
-                }
-            }
-        }
-    }
-
     // Request notification permission for Android 13+
     private void requestNotificationPermission() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
@@ -467,12 +343,6 @@ public class MainActivity extends AppCompatActivity {
                 // Notification permission denied
                 Toast.makeText(this, "Notification permission is required to receive notifications", Toast.LENGTH_LONG).show();
             }
-        } else if (requestCode == LOCATION_PERMISSION_REQUEST_CODE) {
-            if (grantResults.length > 0 && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
-                Log.d("MainActivity", "Location permission granted");
-            } else {
-                Toast.makeText(this, "Location permission helps to show nearby restaurants and delivery options", Toast.LENGTH_LONG).show();
-            }
         }
     }
 
@@ -488,9 +358,7 @@ public class MainActivity extends AppCompatActivity {
         
         // Request notification permission for Android 13+
         requestNotificationPermission();
-        // Request location permission for Android 6.0+
-        requestLocationPermission();
-        
+
         // Initialize file picker launcher
         filePickerLauncher = registerForActivityResult(
             new ActivityResultContracts.StartActivityForResult(),
@@ -547,23 +415,12 @@ public class MainActivity extends AppCompatActivity {
         // Add JavaScript interface
         webView.addJavascriptInterface(new WebAppInterface(), "Android");
         
-        // Set WebChromeClient to handle file uploads and geolocation
+        // Set WebChromeClient to handle file uploads and JS dialogs
         webView.setWebChromeClient(new WebChromeClient() {
 
             @Override
             public void onGeolocationPermissionsShowPrompt(String origin, GeolocationPermissions.Callback callback) {
-                // Allow WebView to use location when app has permission
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-                    if (ContextCompat.checkSelfPermission(MainActivity.this, android.Manifest.permission.ACCESS_FINE_LOCATION)
-                            == PackageManager.PERMISSION_GRANTED) {
-                        callback.invoke(origin, true, false);
-                    } else {
-                        callback.invoke(origin, false, false);
-                        Toast.makeText(MainActivity.this, "Location permission is required", Toast.LENGTH_SHORT).show();
-                    }
-                } else {
-                    callback.invoke(origin, true, false);
-                }
+                callback.invoke(origin, false, false);
             }
 
             @Override
@@ -681,16 +538,14 @@ public class MainActivity extends AppCompatActivity {
         settings.setDatabaseEnabled(true);
         settings.setCacheMode(WebSettings.LOAD_DEFAULT);
 
-        webView.loadUrl(MAIN_WEB_URL);
-//          webView.loadUrl("file:///android_asset/www/index.html");
+//        webView.loadUrl(MAIN_WEB_URL);
+        webView.loadUrl("file:///android_asset/www/index.html");
         
         // Debug: Connect to local development server
         // Note: On Android emulator, use "http://10.0.2.2:8081" instead of "localhost"
         // On physical device, use your computer's IP address (e.g., "http://192.168.1.100:8081")
 //        webView.loadUrl("http://10.0.2.2:8081");
 
-        DriverLocationNativeForegroundService.start(this);
-        
         // Check for pending notifications and show as alerts
         // Delay this slightly to ensure activity is fully initialized
         new Handler(Looper.getMainLooper()).postDelayed(() -> {
@@ -735,24 +590,24 @@ public class MainActivity extends AppCompatActivity {
             if (connectivityAlertDialog != null && connectivityAlertDialog.isShowing()) {
                 return;
             }
-            connectivityAlertDialog = new AlertDialog.Builder(MainActivity.this)
-                    .setMessage("This app requires an internet connection to function.")
-                    .setPositiveButton("Retry", (d, which) -> {
-                        connectivityAlertDialog = null;
-                        if (webView != null && !isFinishing() && !isDestroyedCompat()) {
-                            webView.loadUrl(MAIN_WEB_URL);
-                        }
-                    })
-                    .setCancelable(false)
-                    .create();
-            connectivityAlertDialog.setOnDismissListener(dialog -> connectivityAlertDialog = null);
-            connectivityAlertDialog.show();
+//            connectivityAlertDialog = new AlertDialog.Builder(MainActivity.this)
+//                    .setMessage("This app requires an internet connection to function.")
+//                    .setPositiveButton("Retry", (d, which) -> {
+//                        connectivityAlertDialog = null;
+//                        if (webView != null && !isFinishing() && !isDestroyedCompat()) {
+//                            webView.loadUrl(MAIN_WEB_URL);
+//                        }
+//                    })
+//                    .setCancelable(false)
+//                    .create();
+//            connectivityAlertDialog.setOnDismissListener(dialog -> connectivityAlertDialog = null);
+//            connectivityAlertDialog.show();
         });
     }
 
     private void syncDriverTokenFromWebView(WebView view) {
         view.evaluateJavascript(
-                "(function(){try{var t=localStorage.getItem('@driver_token');return t==null?'':String(t);}catch(e){return '';}})()",
+                "(function(){try{var t=localStorage.getItem('token');return t==null?'':String(t);}catch(e){return '';}})()",
                 value -> {
                     if (isFinishing() || isDestroyedCompat()) {
                         return;
@@ -924,8 +779,7 @@ public class MainActivity extends AppCompatActivity {
     }
 
     /**
-     * Clears posted notifications (stops ringtone / heads-up tied to them) and cancels ongoing
-     * vibration from a new-order alert when the user brings the app to the foreground.
+     * Clears posted order notifications when the user brings the app to the foreground.
      */
     private void dismissOrderNotificationsAndStopAlertFeedback() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
@@ -956,12 +810,6 @@ public class MainActivity extends AppCompatActivity {
 
     @Override
     protected void onDestroy() {
-        // Only stop when this activity is actually finishing (user removed app from Recents or left
-        // with back). Home / switching to Google Maps does not call onDestroy — service keeps running.
-        // Rotation or "Don't keep activities" can destroy without finishing — do not stop then.
-        if (isFinishing()) {
-            DriverLocationNativeForegroundService.stop(this);
-        }
         if (connectivityAlertDialog != null && connectivityAlertDialog.isShowing()) {
             try {
                 connectivityAlertDialog.dismiss();

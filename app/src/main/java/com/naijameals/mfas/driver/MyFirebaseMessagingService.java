@@ -11,9 +11,6 @@ import android.graphics.drawable.BitmapDrawable;
 import android.graphics.drawable.Drawable;
 import android.media.RingtoneManager;
 import android.net.Uri;
-import android.os.Build;
-import android.os.VibrationEffect;
-import android.os.Vibrator;
 import android.util.Log;
 import androidx.core.app.NotificationCompat;
 import androidx.core.app.NotificationManagerCompat;
@@ -87,8 +84,6 @@ public class MyFirebaseMessagingService extends FirebaseMessagingService {
             storeNotificationForAlert(displayTitle, body);
             sendNotification(displayTitle, body, remoteMessage.getData());
 
-            vibrateDevice();
-
             Intent broadcastIntent = new Intent("com.naijameals.mfas.driver.NOTIFICATION_RECEIVED");
             broadcastIntent.putExtra("title", displayTitle);
             broadcastIntent.putExtra("body", body);
@@ -143,17 +138,7 @@ public class MyFirebaseMessagingService extends FirebaseMessagingService {
                 flags
         );
 
-        PendingIntent fullScreenPendingIntent = PendingIntent.getActivity(
-                appContext,
-                notificationId + 1,
-                intent,
-                flags
-        );
-
-        Uri ringSoundUri = RingtoneManager.getDefaultUri(RingtoneManager.TYPE_RINGTONE);
-        if (ringSoundUri == null) {
-            ringSoundUri = RingtoneManager.getDefaultUri(RingtoneManager.TYPE_NOTIFICATION);
-        }
+        Uri soundUri = RingtoneManager.getDefaultUri(RingtoneManager.TYPE_NOTIFICATION);
 
         int smallIconId = appContext.getApplicationInfo().icon;
         if (smallIconId == 0) {
@@ -167,12 +152,10 @@ public class MyFirebaseMessagingService extends FirebaseMessagingService {
                 .setContentTitle(title)
                 .setContentText(messageBody)
                 .setAutoCancel(true)
-                .setSound(ringSoundUri)
-                .setCategory(NotificationCompat.CATEGORY_CALL)
-                .setPriority(NotificationCompat.PRIORITY_MAX)
-                .setDefaults(NotificationCompat.DEFAULT_VIBRATE | NotificationCompat.DEFAULT_LIGHTS)
+                .setCategory(NotificationCompat.CATEGORY_MESSAGE)
+                .setPriority(NotificationCompat.PRIORITY_DEFAULT)
+                .setDefaults(NotificationCompat.DEFAULT_LIGHTS)
                 .setContentIntent(pendingIntent)
-                .setFullScreenIntent(fullScreenPendingIntent, true)
                 .setStyle(new NotificationCompat.BigTextStyle().bigText(messageBody))
                 .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
                 .setWhen(System.currentTimeMillis());
@@ -180,6 +163,9 @@ public class MyFirebaseMessagingService extends FirebaseMessagingService {
         // Add large icon if available (shows app icon in expanded notification)
         if (largeIcon != null) {
             notificationBuilder.setLargeIcon(largeIcon);
+        }
+        if (soundUri != null) {
+            notificationBuilder.setSound(soundUri);
         }
 
         NotificationManagerCompat.from(appContext).notify(notificationId, notificationBuilder.build());
@@ -217,17 +203,5 @@ public class MyFirebaseMessagingService extends FirebaseMessagingService {
         drawable.setBounds(0, 0, canvas.getWidth(), canvas.getHeight());
         drawable.draw(canvas);
         return bitmap;
-    }
-
-    private void vibrateDevice() {
-        Vibrator vibrator = (Vibrator) getSystemService(Context.VIBRATOR_SERVICE);
-        if (vibrator != null && vibrator.hasVibrator()) {
-            long[] ringPattern = {0, 600, 400, 600, 400, 600, 400, 1200};
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                vibrator.vibrate(VibrationEffect.createWaveform(ringPattern, -1));
-            } else {
-                vibrator.vibrate(ringPattern, -1);
-            }
-        }
     }
 }

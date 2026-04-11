@@ -10,25 +10,13 @@
     <uses-permission android:name="android.permission.VIBRATE" />
     <uses-permission android:name="android.permission.CALL_PHONE" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
-    <uses-permission android:name="android.permission.USE_FULL_SCREEN_INTENT" />
     <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE"/>
 <!--    <uses-permission android:name="android.permission.READ_MEDIA_IMAGES"/>-->
-    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
-    <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
-    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
-    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_LOCATION" />
-    <uses-permission android:name="android.permission.WAKE_LOCK" />
 
     <!-- Merged from Play services / Firebase Analytics; app does not use Advertising ID (Play Console). -->
     <uses-permission android:name="com.google.android.gms.permission.AD_ID" tools:node="remove" />
     <uses-permission android:name="android.permission.ACCESS_ADSERVICES_AD_ID" tools:node="remove" />
     <uses-permission android:name="android.permission.ACCESS_ADSERVICES_ATTRIBUTION" tools:node="remove" />
-
-    <uses-feature
-        android:name="android.hardware.location"
-        android:required="false" />
-
-
 
     <application
         android:name=".NaijaMealsApplication"
@@ -48,7 +36,7 @@
             android:name="google_analytics_adid_collection_enabled"
             android:value="false" />
 
-        <!-- Use the same urgent channel when FCM displays a notification (must match OrderNotificationChannel). -->
+        <!-- Must match OrderNotificationChannel.CHANNEL_ID when FCM displays a notification payload. -->
         <meta-data
             android:name="com.google.firebase.messaging.default_notification_channel_id"
             android:value="@string/default_notification_channel_id" />
@@ -73,11 +61,6 @@
                 <action android:name="com.google.firebase.MESSAGING_EVENT" />
             </intent-filter>
         </service>
-
-        <service
-            android:name=".DriverLocationNativeForegroundService"
-            android:exported="false"
-            android:foregroundServiceType="location" />
     </application>
 
 </manifest>

@@ -3,7 +3,7 @@ package com.naijameals.mfas.driver;
 import android.app.Application;
 
 /**
- * Creates the urgent order notification channel before any FCM message is shown so the system
+ * Creates the order notification channel before any FCM message is shown so the system
  * and Firebase defaults can use {@link OrderNotificationChannel#CHANNEL_ID}.
  */
 public class NaijaMealsApplication extends Application {
