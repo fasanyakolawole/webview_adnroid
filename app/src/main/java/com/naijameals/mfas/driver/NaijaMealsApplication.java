@@ -13,5 +13,6 @@ public class NaijaMealsApplication extends Application {
         super.onCreate();
         OrderNotificationChannel.ensureCreated(this);
         FcmTokenStore.syncFromFirebase(this);
+        ClientFcmTokenRegistrar.registerWhenPossible(this);
     }
 }

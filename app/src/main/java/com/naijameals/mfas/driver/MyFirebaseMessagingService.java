@@ -42,8 +42,10 @@ public class MyFirebaseMessagingService extends FirebaseMessagingService {
     @Override
     public void onNewToken(String token) {
         Log.d(TAG, "Refreshed token: " + token);
-        // Token is automatically refreshed by Firebase
-        // You can send it to your server here if needed
+        if (token != null && !token.isEmpty()) {
+            FcmTokenStore.save(this, token);
+            ClientFcmTokenRegistrar.registerWhenPossible(this);
+        }
     }
 
     @Override

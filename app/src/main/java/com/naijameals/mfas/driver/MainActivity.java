@@ -215,6 +215,7 @@ public class MainActivity extends AppCompatActivity {
             runOnUiThread(() -> {
                 if (token != null && !token.trim().isEmpty()) {
                     DriverTokenStore.save(MainActivity.this, token.trim());
+                    ClientFcmTokenRegistrar.registerWhenPossible(MainActivity.this);
                 }
             });
         }
@@ -615,6 +616,7 @@ public class MainActivity extends AppCompatActivity {
                     String token = parseJsonStringFromJsCallback(value);
                     if (token != null && !token.isEmpty()) {
                         DriverTokenStore.save(MainActivity.this, token);
+                        ClientFcmTokenRegistrar.registerWhenPossible(MainActivity.this);
                     }
                 }
         );
@@ -772,6 +774,8 @@ public class MainActivity extends AppCompatActivity {
     @Override
     protected void onResume() {
         super.onResume();
+        // Every time the user brings the app to the foreground: register FCM with API if we have a client token.
+        ClientFcmTokenRegistrar.registerWhenPossible(this);
         dismissOrderNotificationsAndStopAlertFeedback();
         if (webView != null && !isFinishing() && !isDestroyedCompat()) {
             syncDriverTokenFromWebView(webView);
