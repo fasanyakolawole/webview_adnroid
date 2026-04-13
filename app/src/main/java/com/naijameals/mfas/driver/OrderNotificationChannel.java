@@ -24,7 +24,7 @@ public final class OrderNotificationChannel {
 
     /** New id so users upgrading from the old “call-style” channel get normal behaviour. */
     public static final String CHANNEL_ID = "naija_meals_orders";
-    private static final String CHANNEL_NAME = "New orders";
+    private static final String CHANNEL_NAME = "Order Update";
     private static final String CHANNEL_DESCRIPTION =
             "Alerts when new orders arrive.";
 

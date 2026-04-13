@@ -29,7 +29,7 @@ import org.json.JSONObject;
 public class MyFirebaseMessagingService extends FirebaseMessagingService {
 
     private static final String TAG = "FCMService";
-    public static final String NEW_ORDER_TITLE = "New Order";
+    public static final String NEW_ORDER_TITLE = "Order Update";
     private static final String PREF_NAME = "pending_notifications";
     private static final String PREF_KEY_NOTIFICATIONS = "notifications_list";
 
